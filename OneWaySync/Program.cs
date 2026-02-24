@@ -6,13 +6,13 @@ using OneWaySync.Synchronizer;
 //cli - OneWaySync.exe "C:\_test\A" "C:\_test\B" 30 "C:\_test.log.txt"
 
 
-var argumentsFromCLI = UserInput.GetCLIData(args);
+var argumentsFromCLI = InputValidator.GetCLIData(args);
 
 var loggerFactory = LoggerSetup.CreateLoggerFactory(argumentsFromCLI.LogFilePath!);
 var logger = loggerFactory.CreateLogger<Program>();
 
-var inputValidator = new InputValidator(logger, argumentsFromCLI);
-inputValidator.Validate();
+var inputValidator = new InputValidator(logger);
+inputValidator.Validate(argumentsFromCLI);
 
 var synchronizer = new Synchronizer(logger, argumentsFromCLI);
 

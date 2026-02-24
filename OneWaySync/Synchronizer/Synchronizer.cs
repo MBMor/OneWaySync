@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using OneWaySync.CLIParser;
-using System.Security.Cryptography;
 
 namespace OneWaySync.Synchronizer
 {
@@ -193,7 +192,7 @@ namespace OneWaySync.Synchronizer
                 if (sourceStructure.SubDirsRelativePaths.Contains(relativePath))
                     continue;
 
-                var destinationDirectryFullPath = Path.Combine(_destination, relativePath);
+                var destinationDirectryFullPath = Path.Combine(destinationStructure.RootDirectory, relativePath);
 
                 try
                 {

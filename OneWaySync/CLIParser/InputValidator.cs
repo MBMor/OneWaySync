@@ -1,16 +1,37 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using CommandLine;
+using Microsoft.Extensions.Logging;
 
 namespace OneWaySync.CLIParser
 {
-    public class InputValidator(ILogger logger, UserInput userInput)
+    public class InputValidator(ILogger logger)
     {
         private readonly ILogger _logger = logger;
-        private readonly UserInput _userInput = userInput;
 
-        public void Validate()
+
+        public static UserInput GetCLIData(string[] args)
         {
-            var source = _userInput.SourceDirectory;
-            var destination = _userInput.DestinationDirectory;
+            var parsed = Parser.Default.ParseArguments<Options>(args);
+
+            return new UserInput
+            {
+                SourceDirectory = NormalizePath(parsed.Value.SourceDirectoryPath),
+                DestinationDirectory = NormalizePath(parsed.Value.DestinationDirectoryPath),
+                SynchronizationInterval = parsed.Value.SynchronizationInterval == 0
+                                            ? 1 : Math.Abs(parsed.Value.SynchronizationInterval), // min value 1
+                LogFilePath = NormalizePath(parsed.Value.LogFilePath)
+            };
+        }
+
+        private static string NormalizePath(string path)
+        {
+            return Path.GetFullPath(path)
+                       .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        public void Validate(UserInput userInput)
+        {
+            var source = userInput.SourceDirectory;
+            var destination = userInput.DestinationDirectory;
 
             if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(destination))
                 throw new ArgumentException("Whitespace/null used instead of valid directory path"); 
