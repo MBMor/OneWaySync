@@ -17,7 +17,6 @@ inputValidator.Validate();
 var synchronizer = new Synchronizer(logger, argumentsFromCLI);
 
 synchronizer.Start();
-
 Console.ReadLine();
 synchronizer.Stop();
 

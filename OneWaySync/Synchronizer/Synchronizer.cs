@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using OneWaySync.CLIParser;
+using System.Security.Cryptography;
 
 namespace OneWaySync.Synchronizer
 {
@@ -9,7 +10,7 @@ namespace OneWaySync.Synchronizer
         private readonly string _source;
         private readonly string _destination;
         private readonly TimeSpan _synchronizationPeriod;
-        private readonly Md5Helper _md5Helper;
+        private readonly DirectoryHelper _directoryMetadataHelper;
 
         private Timer? _timer = null;
         private bool _isSyncRunning = false;
@@ -26,7 +27,7 @@ namespace OneWaySync.Synchronizer
             _source = userInput.SourceDirectory!;
             _destination = userInput.DestinationDirectory!;
             _synchronizationPeriod = TimeSpan.FromSeconds(userInput.SynchronizationInterval);
-            _md5Helper = new Md5Helper(logger);
+            _directoryMetadataHelper = new DirectoryHelper(logger); 
 
         }
 
@@ -37,6 +38,7 @@ namespace OneWaySync.Synchronizer
 
             // Runs immediately RunOnce() method after start, then periodically
             _timer = new Timer(_ => RunOnce(), null, TimeSpan.Zero, _synchronizationPeriod);
+
             _logger.LogInformation("Synchronization started. Period: {Period}", _synchronizationPeriod);
         }
 
@@ -54,23 +56,21 @@ namespace OneWaySync.Synchronizer
                 _logger.LogWarning("Skipping start of synchronization cycle, previous one still in progress");
                 return;
             }
-            Console.WriteLine(" ");
-            Console.WriteLine("||=======================================||");
-            Console.WriteLine("||Press \"Enter\" key to end the program.  ||");
-            Console.WriteLine("||=======================================||");
-            Console.WriteLine("Starting new synchronization round");
-            Console.WriteLine(" ");
+            DisplayVisualSeparatorInConsole();
 
             _isSyncRunning = true;
             try
             {
-                CreateSubDirectoriesInDestination();
+                var sourceStructure = _directoryMetadataHelper.ScanDirectory(_source, _enumOptions);
+                var destinationStructure = _directoryMetadataHelper.ScanDirectory(_destination, _enumOptions);
 
-                CopyOrUpdateFilesInDestination();
+                CreateSubDirectories(sourceStructure, destinationStructure);
 
-                DeleteExtraFilesInReplica();
+                CopyOrUpdateFiles(sourceStructure, destinationStructure);
 
-                DeleteExtraDirectoriesInReplica();
+                DeleteExtraFiles(sourceStructure, destinationStructure);
+
+                DeleteExtraDirectories(sourceStructure, destinationStructure);
 
                 _logger.LogInformation("Synchronization finished. Waiting for new round to start.");
             }
@@ -84,131 +84,143 @@ namespace OneWaySync.Synchronizer
             }
         }
 
-        private void CreateSubDirectoriesInDestination()
+        private static void DisplayVisualSeparatorInConsole()
         {
-            var allSubDirectoriesInSource = Directory.EnumerateDirectories(_source, "*", _enumOptions);
-            foreach (var subDirectory in allSubDirectoriesInSource)
+            Console.WriteLine(" ");
+            Console.WriteLine("||=======================================||");
+            Console.WriteLine("||Press \"Enter\" key to end the program.  ||");
+            Console.WriteLine("||=======================================||");
+            Console.WriteLine("Starting new synchronization round");
+            Console.WriteLine(" ");
+        }
+
+        private void CreateSubDirectories(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
+        {
+            foreach (var relativePath in sourceStructure.SubDirsRelativePaths.OrderBy(subDir => subDir.Length))
             {
                 try
                 {
-                    var relativePath = Path.GetRelativePath(_source, subDirectory);
-                    var replicaSubDirectory = Path.Combine(_destination, relativePath);
+                    var dstDirectoryFullPath = Path.Combine(destinationStructure.RootDirectory, relativePath);
 
-                    if (!Directory.Exists(replicaSubDirectory))
+                    if (!Directory.Exists(dstDirectoryFullPath))
                     {
-                        Directory.CreateDirectory(replicaSubDirectory);
+                        Directory.CreateDirectory(dstDirectoryFullPath);
                         _logger.LogInformation("Created directory: {Dir}", relativePath);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("Failed creating directory: {Dir} | Exception: {ex.Message}", subDirectory, ex.Message);
+                    _logger.LogError("Failed creating directory: {Dir} | Exception: {ex.Message}", relativePath, ex.Message);
                 }
             }
         }
-        private void CopyOrUpdateFilesInDestination()
+        private void CopyOrUpdateFiles(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
         {
-            var allFilesInSourceDirectory = Directory.EnumerateFiles(_source, "*", _enumOptions);
-            foreach (var sourceFile in allFilesInSourceDirectory)
+            foreach (var (relativePath, srcFileMetadata) in sourceStructure.FilesRelativePathsAndMetadata)
             {
                 try
                 {
-                    var relativePath = Path.GetRelativePath(_source, sourceFile);
-                    var replicaFilePath = Path.Combine(_destination, relativePath);
-
-                    var sourceFileInfo = new FileInfo(sourceFile);
-
-                    if (!File.Exists(replicaFilePath))
+                    var dstFileFullPath = Path.Combine(destinationStructure.RootDirectory, relativePath);
+                    //if file is missing copy it to destination and skip to another foreach item, if not query dstFileMetadata
+                    if (!destinationStructure.FilesRelativePathsAndMetadata
+                                                    .TryGetValue(relativePath, out var dstFileMetadata))
                     {
-                        CopyFileSetMetadataAndCheckMd5(sourceFile, relativePath, replicaFilePath, sourceFileInfo);
+                        CopyFileSetMetadataAndCheckMd5(
+                            srcFileMetadata.FullPath, 
+                            relativePath, 
+                            dstFileFullPath,
+                            srcFileMetadata.LastWriteTimeUtc); 
 
                         continue;
                     }
 
-                    var replicaInfo = new FileInfo(replicaFilePath);
-
                     bool metadataAreDifferent =
-                        sourceFileInfo.Length != replicaInfo.Length ||
-                        sourceFileInfo.LastWriteTimeUtc != replicaInfo.LastWriteTimeUtc;
+                        srcFileMetadata.FileSizeInBytes != dstFileMetadata.FileSizeInBytes ||
+                        srcFileMetadata.LastWriteTimeUtc != dstFileMetadata.LastWriteTimeUtc;
 
                     bool contentMismatchByMd5 = false;
                     if (!metadataAreDifferent)
                     {
-                        contentMismatchByMd5 = !_md5Helper.Md5Equals(sourceFile, replicaFilePath, relativePath);
+                        contentMismatchByMd5 = !Md5Helper.Md5Equals(srcFileMetadata.FullPath, dstFileMetadata.FullPath);
                         if (contentMismatchByMd5)
                             _logger.LogWarning("Metadata equal but content differs (MD5 mismatch): {File}", relativePath);
                     }
 
                     if (metadataAreDifferent || contentMismatchByMd5)
                     {
-                        CopyFileSetMetadataAndCheckMd5(sourceFile, relativePath, replicaFilePath, sourceFileInfo);
+                        CopyFileSetMetadataAndCheckMd5(
+                            srcFileMetadata.FullPath,
+                            relativePath,
+                            dstFileFullPath,
+                            srcFileMetadata.LastWriteTimeUtc);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("Failed processing file: {File} | Exception: {ex.Message}", sourceFile, ex.Message);
+                    _logger.LogError
+                        ("Failed processing file: {File} | Exception: {ex.Message}", srcFileMetadata.FullPath, ex.Message);
                 }
             }
         }
 
 
-        private void DeleteExtraFilesInReplica()
+        private void DeleteExtraFiles(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
         {
-            var allFilesInDestinationDirectory = Directory.EnumerateFiles(_destination, "*", _enumOptions);
-            foreach (var replicaFile in allFilesInDestinationDirectory)
+            foreach (var (relativePath, dstFileMetadata) in destinationStructure.FilesRelativePathsAndMetadata)
             {
+                if (sourceStructure.FilesRelativePathsAndMetadata.ContainsKey(relativePath))
+                    continue;
+
                 try
                 {
-                    var relativePath = Path.GetRelativePath(_destination, replicaFile);
-                    var sourceFilePath = Path.Combine(_source, relativePath);
-
-                    if (!File.Exists(sourceFilePath))
-                    {
-                        File.SetAttributes(replicaFile, FileAttributes.Normal);
-                        File.Delete(replicaFile);
-                        _logger.LogInformation("Deleted extra file: {File}", replicaFile);
-                    }
+                    File.SetAttributes(dstFileMetadata.FullPath, FileAttributes.Normal);
+                    File.Delete(dstFileMetadata.FullPath);
+                    _logger.LogInformation("Deleted extra file: {File}", relativePath);
+                    
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("Failed to delete extra file: {File} | Exception: {ex.Message}", replicaFile, ex.Message);
+                    _logger.LogError("Failed to delete extra file: {File} | Exception: {ex.Message}", relativePath, ex.Message);
                 }
             }
         }
 
-        private void DeleteExtraDirectoriesInReplica()
+        private void DeleteExtraDirectories(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
         {
-            var allSubdirectoriesInDestinationDirectory = Directory
-                .EnumerateDirectories(_destination, "*", _enumOptions)
-                .OrderByDescending(d => d.Length); 
-
-            foreach (var replicaSubdirectory in allSubdirectoriesInDestinationDirectory)
+            foreach (var relativePath in destinationStructure.SubDirsRelativePaths
+                                                                    .OrderByDescending(subDir => subDir.Length))
             {
+                if (sourceStructure.SubDirsRelativePaths.Contains(relativePath))
+                    continue;
+
+                var destinationDirectryFullPath = Path.Combine(_destination, relativePath);
+
                 try
                 {
-                    var relativePath = Path.GetRelativePath(_destination, replicaSubdirectory);
-                    var sourceDirPath = Path.Combine(_source, relativePath);
-
-                    if (!Directory.Exists(sourceDirPath))
+                    if (Directory.Exists(destinationDirectryFullPath))
                     {
-                        Directory.Delete(replicaSubdirectory, recursive: true);
+                        Directory.Delete(destinationDirectryFullPath, recursive: true);
                         _logger.LogInformation("Deleted extra directory: {Dir}", relativePath);
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError("Failed to delete extra directory: {Dir} | Exception: {Message}",
-                        replicaSubdirectory, ex.Message);
+                        relativePath, ex.Message);
                 }
             }
         }
 
-        private void CopyFileSetMetadataAndCheckMd5(string sourceFile, string relativePath, string replicaFilePath, FileInfo sourceFileInfo)
+        private void CopyFileSetMetadataAndCheckMd5(
+            string sourceFile, 
+            string relativePath, 
+            string replicaFilePath,
+            DateTime lastWriteTimeUtc)
         {
             File.Copy(sourceFile, replicaFilePath, overwrite: true);
-            File.SetLastWriteTimeUtc(replicaFilePath, sourceFileInfo.LastWriteTimeUtc);
+            File.SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
 
-            _md5Helper.ValidateCopy(sourceFile, replicaFilePath, relativePath);
+            Md5Helper.ValidateCopy(sourceFile, replicaFilePath, relativePath);
             _logger.LogInformation("Copied file (MD5 OK): {File}", relativePath);
         }
         public void Dispose()
