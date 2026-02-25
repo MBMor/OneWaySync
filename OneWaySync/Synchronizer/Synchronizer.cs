@@ -27,16 +27,18 @@ namespace OneWaySync.Synchronizer
 
         public Synchronizer(
             ILogger logger, 
-            UserInput userInput, 
+            string sourceDirectory,
+            string destinationDirectory,
+            int synchronizationInterval,
             IDirectoryHelper directoryHelper, 
             IMd5Helper md5Helper,
             IFileOperationsHelper fileOperationsHelper
             )
         {
             _logger = logger;
-            _source = userInput.SourceDirectory!;
-            _destination = userInput.DestinationDirectory!;
-            _synchronizationPeriod = TimeSpan.FromSeconds(userInput.SynchronizationInterval);
+            _source = sourceDirectory;
+            _destination = destinationDirectory;
+            _synchronizationPeriod = TimeSpan.FromSeconds(synchronizationInterval);
             _directoryMetadataHelper = directoryHelper;
             _md5Helper = md5Helper;
             _fileOperationsHelper = fileOperationsHelper;

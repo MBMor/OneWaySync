@@ -20,9 +20,12 @@ try
     var md5Helper = new Md5Helper();
     var fileOperationsHelper = new FileOperationsHelper();
 
+
     var synchronizer = new Synchronizer(
                                 logger,
-                                argumentsFromCLI,
+                                argumentsFromCLI.SourceDirectory!,
+                                argumentsFromCLI.DestinationDirectory!,
+                                argumentsFromCLI.SynchronizationInterval,
                                 directoryHelper,
                                 md5Helper,
                                 fileOperationsHelper);
