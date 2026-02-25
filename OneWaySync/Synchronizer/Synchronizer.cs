@@ -1,18 +1,22 @@
 ﻿using Microsoft.Extensions.Logging;
 using OneWaySync.CLIParser;
+using OneWaySync.Synchronizer.Helpers;
 
 namespace OneWaySync.Synchronizer
 {
     internal class Synchronizer : IDisposable
     {
         private readonly ILogger _logger;
+        private readonly IDirectoryHelper _directoryMetadataHelper;
+        private readonly IMd5Helper _md5Helper;
+
         private readonly string _source;
         private readonly string _destination;
-        private readonly TimeSpan _synchronizationPeriod;
-        private readonly DirectoryHelper _directoryMetadataHelper;
 
+        private readonly TimeSpan _synchronizationPeriod;
         private Timer? _timer = null;
-        private bool _isSyncRunning = false;
+        private int _isSyncRunning_InterlockedUseOnly = 0;
+        
         private static readonly EnumerationOptions _enumOptions = new()
         {
             RecurseSubdirectories = true,
@@ -20,14 +24,14 @@ namespace OneWaySync.Synchronizer
             ReturnSpecialDirectories = false
         };
 
-        public Synchronizer(ILogger logger, UserInput userInput)
+        public Synchronizer(ILogger logger, UserInput userInput, DirectoryHelper directoryHelper, Md5Helper md5Helper)
         {
             _logger = logger;
             _source = userInput.SourceDirectory!;
             _destination = userInput.DestinationDirectory!;
             _synchronizationPeriod = TimeSpan.FromSeconds(userInput.SynchronizationInterval);
-            _directoryMetadataHelper = new DirectoryHelper(logger); 
-
+            _directoryMetadataHelper = directoryHelper;
+            _md5Helper = md5Helper;
         }
 
         public void Start()
@@ -50,14 +54,13 @@ namespace OneWaySync.Synchronizer
 
         public void RunOnce()
         {
-            if (_isSyncRunning)
+            if (Interlocked.Exchange(ref _isSyncRunning_InterlockedUseOnly, 1) == 1)
             {
                 _logger.LogWarning("Skipping start of synchronization cycle, previous one still in progress");
                 return;
             }
             DisplayVisualSeparatorInConsole();
 
-            _isSyncRunning = true;
             try
             {
                 var sourceStructure = _directoryMetadataHelper.ScanDirectory(_source, _enumOptions);
@@ -79,18 +82,8 @@ namespace OneWaySync.Synchronizer
             }
             finally
             {
-                _isSyncRunning = false;
+                Interlocked.Exchange(ref _isSyncRunning_InterlockedUseOnly, 0);
             }
-        }
-
-        private static void DisplayVisualSeparatorInConsole()
-        {
-            Console.WriteLine(" ");
-            Console.WriteLine("||=======================================||");
-            Console.WriteLine("||Press \"Enter\" key to end the program.  ||");
-            Console.WriteLine("||=======================================||");
-            Console.WriteLine("Starting new synchronization round");
-            Console.WriteLine(" ");
         }
 
         private void CreateSubDirectories(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
@@ -140,7 +133,7 @@ namespace OneWaySync.Synchronizer
                     bool contentMismatchByMd5 = false;
                     if (!metadataAreDifferent)
                     {
-                        contentMismatchByMd5 = !Md5Helper.Md5Equals(srcFileMetadata.FullPath, dstFileMetadata.FullPath);
+                        contentMismatchByMd5 = !_md5Helper.Md5Equals(srcFileMetadata.FullPath, dstFileMetadata.FullPath);
                         if (contentMismatchByMd5)
                             _logger.LogWarning("Metadata equal but content differs (MD5 mismatch): {File}", relativePath);
                     }
@@ -161,7 +154,6 @@ namespace OneWaySync.Synchronizer
                 }
             }
         }
-
 
         private void DeleteExtraFiles(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
         {
@@ -219,12 +211,22 @@ namespace OneWaySync.Synchronizer
             File.Copy(sourceFile, replicaFilePath, overwrite: true);
             File.SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
 
-            Md5Helper.ValidateCopy(sourceFile, replicaFilePath, relativePath);
+            _md5Helper.ValidateCopy(sourceFile, replicaFilePath, relativePath);
             _logger.LogInformation("Copied file (MD5 OK): {File}", relativePath);
         }
         public void Dispose()
         {
             Stop();
+        }
+
+        private static void DisplayVisualSeparatorInConsole()
+        {
+            Console.WriteLine(" ");
+            Console.WriteLine("||=======================================||");
+            Console.WriteLine("||Press \"Enter\" key to end the program.  ||");
+            Console.WriteLine("||=======================================||");
+            Console.WriteLine("Starting new synchronization round");
+            Console.WriteLine(" ");
         }
     }
 }

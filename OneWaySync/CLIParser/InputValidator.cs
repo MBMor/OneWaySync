@@ -7,7 +7,6 @@ namespace OneWaySync.CLIParser
     {
         private readonly ILogger _logger = logger;
 
-
         public static UserInput GetCLIData(string[] args)
         {
             var parsed = Parser.Default.ParseArguments<Options>(args);
@@ -21,13 +20,7 @@ namespace OneWaySync.CLIParser
                 LogFilePath = NormalizePath(parsed.Value.LogFilePath)
             };
         }
-
-        private static string NormalizePath(string path)
-        {
-            return Path.GetFullPath(path)
-                       .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        }
-
+                
         public void Validate(UserInput userInput)
         {
             var source = userInput.SourceDirectory;
@@ -137,7 +130,11 @@ namespace OneWaySync.CLIParser
                 return true;
             }
         }
-
+        private static string NormalizePath(string path)
+        {
+            return Path.GetFullPath(path)
+                       .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
         private static bool DirectoriesAreNested(string path1, string path2)
         {
             var comparison = OperatingSystem.IsWindows()

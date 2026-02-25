@@ -1,7 +1,11 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace OneWaySync.Synchronizer
+namespace OneWaySync.Synchronizer.Helpers
 {
+    public interface IDirectoryHelper
+    {
+        DirectoryContent ScanDirectory(string rootDirectory, EnumerationOptions _enumOptions);
+    }
     public sealed record FileMetadata(string FullPath, long FileSizeInBytes, DateTime LastWriteTimeUtc);
 
     public sealed class DirectoryContent
@@ -11,7 +15,7 @@ namespace OneWaySync.Synchronizer
         public required Dictionary<string, FileMetadata> FilesRelativePathsAndMetadata { get; init; }
     }
 
-    public class DirectoryHelper(ILogger logger)
+    public class DirectoryHelper(ILogger logger) : IDirectoryHelper
     {
         private readonly ILogger _logger = logger;
 
@@ -54,5 +58,6 @@ namespace OneWaySync.Synchronizer
             };
         }
     }
+
 
 }

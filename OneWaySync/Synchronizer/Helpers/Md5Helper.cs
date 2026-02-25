@@ -1,10 +1,16 @@
 ﻿using System.Security.Cryptography;
 
-namespace OneWaySync.Synchronizer
+namespace OneWaySync.Synchronizer.Helpers
 {
-    public class Md5Helper
+    public interface IMd5Helper
     {
-        public static string ComputeMd5Hex(string filePath)
+        string ComputeMd5Hex(string filePath);
+        bool Md5Equals(string sourceFile, string destinationFile);
+        void ValidateCopy(string sourceFile, string destinationFile, string relativePath);
+    }
+    public class Md5Helper : IMd5Helper
+    {
+        public string ComputeMd5Hex(string filePath)
         {
             using var md5 = MD5.Create();
             using var stream = new FileStream(
@@ -19,17 +25,18 @@ namespace OneWaySync.Synchronizer
             return Convert.ToHexString(hash); 
         }
 
-        public static bool Md5Equals(string sourceFile, string destinationFile)
+        public bool Md5Equals(string sourceFile, string destinationFile)
         {
             var src = ComputeMd5Hex(sourceFile);
             var dst = ComputeMd5Hex(destinationFile);
             return StringComparer.OrdinalIgnoreCase.Equals(src, dst);
         }
 
-        public static void ValidateCopy(string sourceFile, string destinationFile, string relativePath)
+        public void ValidateCopy(string sourceFile, string destinationFile, string relativePath)
         {
             if (!Md5Equals(sourceFile, destinationFile))
                 throw new IOException($"MD5 mismatch after copy: {relativePath}");
         }
     }
+
 }
