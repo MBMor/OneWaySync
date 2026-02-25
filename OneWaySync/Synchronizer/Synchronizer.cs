@@ -9,6 +9,7 @@ namespace OneWaySync.Synchronizer
         private readonly ILogger _logger;
         private readonly IDirectoryHelper _directoryMetadataHelper;
         private readonly IMd5Helper _md5Helper;
+        private readonly IFileOperationsHelper _fileOperationsHelper;
 
         private readonly string _source;
         private readonly string _destination;
@@ -24,7 +25,13 @@ namespace OneWaySync.Synchronizer
             ReturnSpecialDirectories = false
         };
 
-        public Synchronizer(ILogger logger, UserInput userInput, DirectoryHelper directoryHelper, Md5Helper md5Helper)
+        public Synchronizer(
+            ILogger logger, 
+            UserInput userInput, 
+            IDirectoryHelper directoryHelper, 
+            IMd5Helper md5Helper,
+            IFileOperationsHelper fileOperationsHelper
+            )
         {
             _logger = logger;
             _source = userInput.SourceDirectory!;
@@ -32,6 +39,7 @@ namespace OneWaySync.Synchronizer
             _synchronizationPeriod = TimeSpan.FromSeconds(userInput.SynchronizationInterval);
             _directoryMetadataHelper = directoryHelper;
             _md5Helper = md5Helper;
+            _fileOperationsHelper = fileOperationsHelper;
         }
 
         public void Start()
@@ -92,11 +100,11 @@ namespace OneWaySync.Synchronizer
             {
                 try
                 {
-                    var dstDirectoryFullPath = Path.Combine(destinationStructure.RootDirectory, relativePath);
+                    var dstDirectoryFullPath = _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
 
-                    if (!Directory.Exists(dstDirectoryFullPath))
+                    if (!_fileOperationsHelper.DirectoryExists(dstDirectoryFullPath))
                     {
-                        Directory.CreateDirectory(dstDirectoryFullPath);
+                        _fileOperationsHelper.CreateDirectory(dstDirectoryFullPath);
                         _logger.LogInformation("Created directory: {Dir}", relativePath);
                     }
                 }
@@ -112,7 +120,7 @@ namespace OneWaySync.Synchronizer
             {
                 try
                 {
-                    var dstFileFullPath = Path.Combine(destinationStructure.RootDirectory, relativePath);
+                    var dstFileFullPath = _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
                     //if file is missing copy it to destination and skip to another foreach item, if not query dstFileMetadata
                     if (!destinationStructure.FilesRelativePathsAndMetadata
                                                     .TryGetValue(relativePath, out var dstFileMetadata))
@@ -164,8 +172,8 @@ namespace OneWaySync.Synchronizer
 
                 try
                 {
-                    File.SetAttributes(dstFileMetadata.FullPath, FileAttributes.Normal);
-                    File.Delete(dstFileMetadata.FullPath);
+                    _fileOperationsHelper.SetAttributes(dstFileMetadata.FullPath, FileAttributes.Normal);
+                    _fileOperationsHelper.DeleteFile(dstFileMetadata.FullPath);
                     _logger.LogInformation("Deleted extra file: {File}", relativePath);
                     
                 }
@@ -184,13 +192,14 @@ namespace OneWaySync.Synchronizer
                 if (sourceStructure.SubDirsRelativePaths.Contains(relativePath))
                     continue;
 
-                var destinationDirectryFullPath = Path.Combine(destinationStructure.RootDirectory, relativePath);
+                var destinationDirectryFullPath = 
+                    _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
 
                 try
                 {
-                    if (Directory.Exists(destinationDirectryFullPath))
+                    if (_fileOperationsHelper.DirectoryExists(destinationDirectryFullPath))
                     {
-                        Directory.Delete(destinationDirectryFullPath, recursive: true);
+                        _fileOperationsHelper.DeleteDirectory(destinationDirectryFullPath, recursive: true);
                         _logger.LogInformation("Deleted extra directory: {Dir}", relativePath);
                     }
                 }
@@ -208,8 +217,8 @@ namespace OneWaySync.Synchronizer
             string replicaFilePath,
             DateTime lastWriteTimeUtc)
         {
-            File.Copy(sourceFile, replicaFilePath, overwrite: true);
-            File.SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
+            _fileOperationsHelper.CopyFile(sourceFile, replicaFilePath, overwrite: true);
+            _fileOperationsHelper.SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
 
             _md5Helper.ValidateCopy(sourceFile, replicaFilePath, relativePath);
             _logger.LogInformation("Copied file (MD5 OK): {File}", relativePath);

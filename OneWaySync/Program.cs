@@ -18,12 +18,14 @@ try
 
     var directoryHelper = new DirectoryHelper(logger);
     var md5Helper = new Md5Helper();
+    var fileOperationsHelper = new FileOperationsHelper();
 
     var synchronizer = new Synchronizer(
                                 logger,
                                 argumentsFromCLI,
                                 directoryHelper,
-                                md5Helper);
+                                md5Helper,
+                                fileOperationsHelper);
 
     synchronizer.Start();
     Console.ReadLine();
