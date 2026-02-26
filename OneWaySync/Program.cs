@@ -20,15 +20,15 @@ try
     var md5Helper = new Md5Helper();
     var fileOperationsHelper = new FileOperationsHelper();
 
-
-    var synchronizer = new Synchronizer(
+    var synchronizationProcessor = new SynchronizationProcessor(
                                 logger,
                                 argumentsFromCLI.SourceDirectory!,
                                 argumentsFromCLI.DestinationDirectory!,
-                                argumentsFromCLI.SynchronizationInterval,
                                 directoryHelper,
                                 md5Helper,
                                 fileOperationsHelper);
+
+    var synchronizer = new Synchronizer(logger, synchronizationProcessor, argumentsFromCLI.SynchronizationInterval);
 
     synchronizer.Start();
     Console.ReadLine();
