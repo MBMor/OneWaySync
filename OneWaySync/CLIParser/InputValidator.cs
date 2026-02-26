@@ -84,7 +84,7 @@ namespace OneWaySync.CLIParser
             }
             catch (Exception ex)
             {
-                _logger.LogError("Inaccessible directory: {path}. Exception: {ex.Message}", path, ex.Message);
+                _logger.LogError("Inaccessible directory: {path}. Exception: {Message}", path, ex.Message);
                 return true;
             }
         }
@@ -126,7 +126,7 @@ namespace OneWaySync.CLIParser
             }
             catch (Exception ex)
             {
-                _logger.LogError("Can't write in directory: {path}. Exception: {ex.Message}", path, ex.Message);
+                _logger.LogError("Can't write in directory: {path}. Exception: {Message}", path, ex.Message);
                 return true;
             }
         }

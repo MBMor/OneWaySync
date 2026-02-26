@@ -16,13 +16,8 @@ namespace OneWaySync.Synchronizer
 
         private readonly string _source;
         private readonly string _destination;
-        
-        private static readonly EnumerationOptions _enumOptions = new()
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            ReturnSpecialDirectories = false
-        };
+
+        private readonly EnumerationOptions _enumOptions;
 
         public SynchronizationProcessor(
             ILogger logger, 
@@ -30,7 +25,8 @@ namespace OneWaySync.Synchronizer
             string destinationDirectory,
             IDirectoryHelper directoryHelper, 
             IMd5Helper md5Helper,
-            IFileOperationsHelper fileOperationsHelper
+            IFileOperationsHelper fileOperationsHelper,
+            EnumerationOptions? enumOptionsOptionalOrDefault = null
             )
         {
             _logger = logger;
@@ -39,7 +35,13 @@ namespace OneWaySync.Synchronizer
             _directoryMetadataHelper = directoryHelper;
             _md5Helper = md5Helper;
             _fileOperationsHelper = fileOperationsHelper;
-        }
+            _enumOptions = enumOptionsOptionalOrDefault ?? new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true,
+                ReturnSpecialDirectories = false
+            };
+    }
 
         public void RunOnce()
         {
@@ -74,57 +76,74 @@ namespace OneWaySync.Synchronizer
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("Failed creating directory: {Dir} | Exception: {ex.Message}", relativePath, ex.Message);
+                    _logger.LogError("Failed creating directory: {Dir} | Exception: {Message}", relativePath, ex.Message);
                 }
             }
         }
+
         private void CopyOrUpdateFiles(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
         {
             foreach (var (relativePath, srcFileMetadata) in sourceStructure.FilesRelativePathsAndMetadata)
             {
                 try
                 {
-                    var dstFileFullPath = _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
-                    //if file is missing copy it to destination and skip to another foreach item, if not query dstFileMetadata
-                    if (!destinationStructure.FilesRelativePathsAndMetadata
-                                                    .TryGetValue(relativePath, out var dstFileMetadata))
-                    {
-                        CopyFileSetMetadataAndCheckMd5(
-                            srcFileMetadata.FullPath, 
-                            relativePath, 
-                            dstFileFullPath,
-                            srcFileMetadata.LastWriteTimeUtc); 
-
-                        continue;
-                    }
-
-                    bool metadataAreDifferent =
-                        srcFileMetadata.FileSizeInBytes != dstFileMetadata.FileSizeInBytes ||
-                        srcFileMetadata.LastWriteTimeUtc != dstFileMetadata.LastWriteTimeUtc;
-
-                    bool contentMismatchByMd5 = false;
-                    if (!metadataAreDifferent)
-                    {
-                        contentMismatchByMd5 = !_md5Helper.Md5Equals(srcFileMetadata.FullPath, dstFileMetadata.FullPath);
-                        if (contentMismatchByMd5)
-                            _logger.LogWarning("Metadata equal but content differs (MD5 mismatch): {File}", relativePath);
-                    }
-
-                    if (metadataAreDifferent || contentMismatchByMd5)
-                    {
-                        CopyFileSetMetadataAndCheckMd5(
-                            srcFileMetadata.FullPath,
-                            relativePath,
-                            dstFileFullPath,
-                            srcFileMetadata.LastWriteTimeUtc);
-                    }
+                    ProcessCurrentFile(relativePath, srcFileMetadata, destinationStructure);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError
-                        ("Failed processing file: {File} | Exception: {ex.Message}", srcFileMetadata.FullPath, ex.Message);
+                    _logger.LogError(ex, "Failed processing file: {File}", srcFileMetadata.FullPath);
                 }
             }
+        }
+        private void ProcessCurrentFile(
+            string relativePath, 
+            FileMetadata srcFileMetadata, 
+            DirectoryContent destinationStructure)
+        {
+            var dstFileFullPath =
+                _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
+            //if file is missing copy it to destination and skip to another foreach item, if not query dstFileMetadata
+            if (!destinationStructure.FilesRelativePathsAndMetadata
+                    .TryGetValue(relativePath, out var dstFileMetadata))
+            {
+                CopyFileSetMetadataAndCheckMd5(
+                    srcFileMetadata.FullPath,
+                    relativePath,
+                    dstFileFullPath,
+                    srcFileMetadata.LastWriteTimeUtc);
+
+                return;
+            }
+
+            if (ShouldCopyFile(relativePath, srcFileMetadata, dstFileMetadata))
+            {
+                CopyFileSetMetadataAndCheckMd5(
+                    srcFileMetadata.FullPath,
+                    relativePath,
+                    dstFileFullPath,
+                    srcFileMetadata.LastWriteTimeUtc);
+            }
+        }
+        private bool ShouldCopyFile(
+            string relativePath,
+            FileMetadata srcFileMetadata,
+            FileMetadata dstFileMetadata)
+        {
+            bool metadataAreDifferent =
+                srcFileMetadata.FileSizeInBytes != dstFileMetadata.FileSizeInBytes ||
+                srcFileMetadata.LastWriteTimeUtc != dstFileMetadata.LastWriteTimeUtc;
+
+            if (metadataAreDifferent)
+                return true;
+
+            bool contentMismatchByMd5 = !_md5Helper.Md5Equals(srcFileMetadata.FullPath, dstFileMetadata.FullPath);
+
+            if (contentMismatchByMd5)
+                _logger.LogWarning(
+                    "Metadata equal but content differs (MD5 mismatch): {File}",
+                    relativePath);
+
+            return contentMismatchByMd5;
         }
 
         private void DeleteExtraFiles(DirectoryContent sourceStructure, DirectoryContent destinationStructure)
@@ -143,7 +162,7 @@ namespace OneWaySync.Synchronizer
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("Failed to delete extra file: {File} | Exception: {ex.Message}", relativePath, ex.Message);
+                    _logger.LogError("Failed to delete extra file: {File} | Exception: {Message}", relativePath, ex.Message);
                 }
             }
         }
@@ -181,12 +200,29 @@ namespace OneWaySync.Synchronizer
             string replicaFilePath,
             DateTime lastWriteTimeUtc)
         {
-            _fileOperationsHelper.CopyFile(sourceFile, replicaFilePath, overwrite: true);
-            _fileOperationsHelper.SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
+            CopyFile(sourceFile, replicaFilePath);
+            SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
 
-            _md5Helper.ValidateCopy(sourceFile, replicaFilePath, relativePath);
+            ValidateCopyOrThrowException(sourceFile, replicaFilePath, relativePath);
+
             _logger.LogInformation("Copied file (MD5 OK): {File}", relativePath);
         }
+
+        private void CopyFile(string sourceFile, string replicaFilePath)
+        {
+            _fileOperationsHelper.CopyFile(sourceFile, replicaFilePath, overwrite: true);
+        }
+
+        private void SetLastWriteTimeUtc(string replicaFilePath, DateTime lastWriteTimeUtc)
+        {
+            _fileOperationsHelper.SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
+        }
+
+        private void ValidateCopyOrThrowException(string sourceFile, string replicaFilePath, string relativePath)
+        {
+            _md5Helper.ValidateCopyOrThrowException(sourceFile, replicaFilePath, relativePath);
+        }
+
 
         private static void DisplayVisualSeparatorInConsole()
         {

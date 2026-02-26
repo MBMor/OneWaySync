@@ -6,7 +6,7 @@ namespace OneWaySync.Synchronizer.Helpers
     {
         string ComputeMd5Hex(string filePath);
         bool Md5Equals(string sourceFile, string destinationFile);
-        void ValidateCopy(string sourceFile, string destinationFile, string relativePath);
+        void ValidateCopyOrThrowException(string sourceFile, string destinationFile, string relativePath);
     }
     public class Md5Helper : IMd5Helper
     {
@@ -32,7 +32,7 @@ namespace OneWaySync.Synchronizer.Helpers
             return StringComparer.OrdinalIgnoreCase.Equals(src, dst);
         }
 
-        public void ValidateCopy(string sourceFile, string destinationFile, string relativePath)
+        public void ValidateCopyOrThrowException(string sourceFile, string destinationFile, string relativePath)
         {
             if (!Md5Equals(sourceFile, destinationFile))
                 throw new IOException($"MD5 mismatch after copy: {relativePath}");
