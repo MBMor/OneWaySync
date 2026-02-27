@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using OneWaySync.GlobalHelpers;
 using OneWaySync.Synchronizer.Helpers;
 
 namespace OneWaySync.Synchronizer
@@ -10,7 +11,7 @@ namespace OneWaySync.Synchronizer
     internal class SynchronizationProcessor : ISynchronizationProcessor
     {
         private readonly ILogger _logger;
-        private readonly IDirectoryHelper _directoryMetadataHelper;
+        private readonly IDirectoryScaner _directoryMetadataHelper;
         private readonly IMd5Helper _md5Helper;
         private readonly IFileOperationsHelper _fileOperationsHelper;
 
@@ -23,7 +24,7 @@ namespace OneWaySync.Synchronizer
             ILogger logger, 
             string sourceDirectory,
             string destinationDirectory,
-            IDirectoryHelper directoryHelper, 
+            IDirectoryScaner directoryHelper, 
             IMd5Helper md5Helper,
             IFileOperationsHelper fileOperationsHelper,
             EnumerationOptions? enumOptionsOptionalOrDefault = null

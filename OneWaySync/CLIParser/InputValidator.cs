@@ -1,23 +1,26 @@
 ﻿using CommandLine;
 using Microsoft.Extensions.Logging;
+using OneWaySync.GlobalHelpers;
 
 namespace OneWaySync.CLIParser
 {
-    public class InputValidator(ILogger logger)
+    public class InputValidator(ILogger logger, IFileOperationsHelper fileOperationsHelper)
     {
         private readonly ILogger _logger = logger;
+        private readonly IFileOperationsHelper _fileOperationsHelper = fileOperationsHelper;
 
-        public static UserInput GetCLIData(string[] args)
+        public UserInput GetCLIData(string[] args)
         {
             var parsed = Parser.Default.ParseArguments<Options>(args);
 
             return new UserInput
             {
-                SourceDirectory = NormalizePath(parsed.Value.SourceDirectoryPath),
-                DestinationDirectory = NormalizePath(parsed.Value.DestinationDirectoryPath),
+
+                SourceDirectory = _fileOperationsHelper.NormalizePath(parsed.Value.SourceDirectoryPath),
+                DestinationDirectory = _fileOperationsHelper.NormalizePath(parsed.Value.DestinationDirectoryPath),
                 SynchronizationInterval = parsed.Value.SynchronizationInterval == 0
                                             ? 1 : Math.Abs(parsed.Value.SynchronizationInterval), // min value 1
-                LogFilePath = NormalizePath(parsed.Value.LogFilePath)
+                LogFilePath = _fileOperationsHelper.NormalizePath(parsed.Value.LogFilePath)
             };
         }
                 
@@ -29,7 +32,7 @@ namespace OneWaySync.CLIParser
             if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(destination))
                 throw new ArgumentException("Whitespace/null used instead of valid directory path"); 
 
-            if (DirectoriesAreNested(source, destination))
+            if (_fileOperationsHelper.DirectoriesAreNested(source, destination))
                 throw new ArgumentException("Nested Source and Destination directory");
 
             //source must exist and allow reading
@@ -41,7 +44,7 @@ namespace OneWaySync.CLIParser
             if (DirectoryMissing(destination))
             {
                 _logger.LogWarning("Destination directory doesn't exist, trying to create one");
-                Directory.CreateDirectory(destination);
+                _fileOperationsHelper.CreateDirectory(destination);
             }
 
             //destination must exist and allow reading
@@ -57,7 +60,7 @@ namespace OneWaySync.CLIParser
 
         private bool DirectoryMissing(string path)
         {
-            if (Directory.Exists(path))
+            if (_fileOperationsHelper.DirectoryExists(path))
             {
                 _logger.LogInformation("Directory {path} exist", path);
                 return false;
@@ -73,7 +76,7 @@ namespace OneWaySync.CLIParser
         {
             try
             {
-                var resultOfAccessAttempt = Directory.EnumerateFileSystemEntries(path).FirstOrDefault();
+                var resultOfAccessAttempt = _fileOperationsHelper.EnumerateFileSystemEntries(path).FirstOrDefault();
                 _logger.LogInformation("Directory {path} accessible for reading", path);
                 return false;
             }
@@ -98,24 +101,20 @@ namespace OneWaySync.CLIParser
 
                 for (int i = 0; i < maxAttemptsForRandomNameGenerator; i++)
                 {
-                    string generatedRandomFileName = Path.Combine(path, Path.GetRandomFileName());
-                    if (!File.Exists(generatedRandomFileName))
+                    string generatedRandomFileName = _fileOperationsHelper.Combine(path, _fileOperationsHelper.GetRandomFileName());
+                    if (!_fileOperationsHelper.FileExists(generatedRandomFileName))
                     {
                         testWriteDeletePermissionFile = generatedRandomFileName;
                         break;
                     }
                 }
 
-                using (FileStream fs = new(
-                    testWriteDeletePermissionFile,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None))
+                using (var _ = _fileOperationsHelper.CreateNewFile(testWriteDeletePermissionFile))
                 {
                     //dummy file creation to verify access rights
                 }
 
-                File.Delete(testWriteDeletePermissionFile);
+                _fileOperationsHelper.DeleteFile(testWriteDeletePermissionFile);
                 _logger.LogInformation("Directory {path} Write/Delete permission OK", path);
                 return false;
             }
@@ -130,30 +129,7 @@ namespace OneWaySync.CLIParser
                 return true;
             }
         }
-        private static string NormalizePath(string path)
-        {
-            return Path.GetFullPath(path)
-                       .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        }
-        private static bool DirectoriesAreNested(string path1, string path2)
-        {
-            var comparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
 
-            // Same directories are not allowed
-            if (string.Equals(path1, path2, comparison))
-                return true;
-
-            // Can't be subdirectory
-            if (path1.StartsWith(path2 + Path.DirectorySeparatorChar, comparison))
-                return true;
-
-            if (path2.StartsWith(path1 + Path.DirectorySeparatorChar, comparison))
-                return true;
-
-            return false;
-        }
 
     }
 }

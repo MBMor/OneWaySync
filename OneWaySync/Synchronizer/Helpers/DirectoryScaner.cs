@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
+using OneWaySync.GlobalHelpers;
 
 namespace OneWaySync.Synchronizer.Helpers
 {
-    public interface IDirectoryHelper
+    public interface IDirectoryScaner
     {
         DirectoryContent ScanDirectory(string rootDirectory, EnumerationOptions _enumOptions);
     }
@@ -15,22 +16,23 @@ namespace OneWaySync.Synchronizer.Helpers
         public required Dictionary<string, FileMetadata> FilesRelativePathsAndMetadata { get; init; }
     }
 
-    public class DirectoryHelper(ILogger logger) : IDirectoryHelper
+    public class DirectoryScaner(ILogger logger, IFileOperationsHelper fileOperationsHelper) : IDirectoryScaner
     {
         private readonly ILogger _logger = logger;
+        private readonly IFileOperationsHelper _fileOperationsHelper = fileOperationsHelper;
 
-        public DirectoryContent ScanDirectory(string rootDirectory, EnumerationOptions _enumOptions) {
+        public DirectoryContent ScanDirectory(string rootDirectory, EnumerationOptions enumOptions) {
 
             var subDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var files = new Dictionary<string, FileMetadata>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var item in Directory.EnumerateFileSystemEntries(rootDirectory, "*", _enumOptions))
+            foreach (var item in _fileOperationsHelper.EnumerateFileSystemEntries(rootDirectory, "*", enumOptions))
             {
                 try
                 {
-                    var relativePath = Path.GetRelativePath(rootDirectory, item);
+                    var relativePath = _fileOperationsHelper.GetRelativePath(rootDirectory, item);
 
-                    var fileAttributes = File.GetAttributes(item);
+                    var fileAttributes = _fileOperationsHelper.GetAttributes(item);
                     var isDirectory = (fileAttributes & FileAttributes.Directory) != 0;
 
                     if (isDirectory)
@@ -39,8 +41,8 @@ namespace OneWaySync.Synchronizer.Helpers
                     }
                     else
                     {
-                        var fileInfo = new FileInfo(item);
-                        files[relativePath] = new FileMetadata(item, fileInfo.Length, fileInfo.LastWriteTimeUtc);
+                        var(length, lastWriteUtc) = _fileOperationsHelper.GetFileSizeAndLastWriteTimeUtc(item);
+                        files[relativePath] = new FileMetadata(item, length, lastWriteUtc);
                     }
                 }
                 catch (Exception ex)
