@@ -15,7 +15,7 @@ namespace OneWaySync.GlobalHelpers
         string NormalizePath(string path);
         bool DirectoriesAreNested(string path1, string path2);
     }
-    internal class PathService
+    internal class PathService : IPathService
     {
 
         public string Combine(string path1, string path2)

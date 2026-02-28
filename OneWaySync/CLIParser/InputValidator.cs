@@ -4,10 +4,11 @@ using OneWaySync.GlobalHelpers;
 
 namespace OneWaySync.CLIParser
 {
-    public class InputValidator(ILogger logger, IFileOperationsHelper fileOperationsHelper)
+    public class InputValidator(ILogger logger, IFileSystem fileOperationsHelper, IPathService pathService)
     {
         private readonly ILogger _logger = logger;
-        private readonly IFileOperationsHelper _fileOperationsHelper = fileOperationsHelper;
+        private readonly IFileSystem _fileOperationsHelper = fileOperationsHelper;
+        private readonly IPathService _pathService = pathService;
 
         public UserInput GetCLIData(string[] args)
         {
@@ -16,11 +17,11 @@ namespace OneWaySync.CLIParser
             return new UserInput
             {
 
-                SourceDirectory = _fileOperationsHelper.NormalizePath(parsed.Value.SourceDirectoryPath),
-                DestinationDirectory = _fileOperationsHelper.NormalizePath(parsed.Value.DestinationDirectoryPath),
+                SourceDirectory = _pathService.NormalizePath(parsed.Value.SourceDirectoryPath),
+                DestinationDirectory = _pathService.NormalizePath(parsed.Value.DestinationDirectoryPath),
                 SynchronizationInterval = parsed.Value.SynchronizationInterval == 0
                                             ? 1 : Math.Abs(parsed.Value.SynchronizationInterval), // min value 1
-                LogFilePath = _fileOperationsHelper.NormalizePath(parsed.Value.LogFilePath)
+                LogFilePath = _pathService.NormalizePath(parsed.Value.LogFilePath)
             };
         }
                 
@@ -32,7 +33,7 @@ namespace OneWaySync.CLIParser
             if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(destination))
                 throw new ArgumentException("Whitespace/null used instead of valid directory path"); 
 
-            if (_fileOperationsHelper.DirectoriesAreNested(source, destination))
+            if (_pathService.DirectoriesAreNested(source, destination))
                 throw new ArgumentException("Nested Source and Destination directory");
 
             //source must exist and allow reading
@@ -101,7 +102,7 @@ namespace OneWaySync.CLIParser
 
                 for (int i = 0; i < maxAttemptsForRandomNameGenerator; i++)
                 {
-                    string generatedRandomFileName = _fileOperationsHelper.Combine(path, _fileOperationsHelper.GetRandomFileName());
+                    string generatedRandomFileName = _pathService.Combine(path, _pathService.GetRandomFileName());
                     if (!_fileOperationsHelper.FileExists(generatedRandomFileName))
                     {
                         testWriteDeletePermissionFile = generatedRandomFileName;

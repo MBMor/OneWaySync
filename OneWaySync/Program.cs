@@ -8,17 +8,18 @@ using OneWaySync.Synchronizer.Helpers;
 //cli - OneWaySync.exe "C:\_test\A" "C:\_test\B" 30 "C:\_test.log.txt"
 try
 {
-    var fileOperationsHelper = new FileOperationsHelper();
+    var fileSystemHelper = new FileSystem();
+    var pathService = new PathService();
 
     var logPath = args[3];
 
-    fileOperationsHelper.FilePathAllowsCreateOrUseFile(logPath);
+    fileSystemHelper.FilePathAllowsCreateOrUseFile(logPath);
     var logger = LoggerSetup.CreateLoggerFactory(logPath).CreateLogger<Program>();
 
     var md5Helper = new Md5Helper();
-    var directoryHelper = new DirectoryScaner(logger, fileOperationsHelper);
+    var directoryHelper = new DirectoryScaner(logger, fileSystemHelper, pathService);
 
-    var inputValidator = new InputValidator(logger, fileOperationsHelper);
+    var inputValidator = new InputValidator(logger, fileSystemHelper, pathService);
     var argumentsFromCLI = inputValidator.GetCLIData(args);
     inputValidator.Validate(argumentsFromCLI);
 
@@ -29,7 +30,8 @@ try
                                 argumentsFromCLI.DestinationDirectory!,
                                 directoryHelper,
                                 md5Helper,
-                                fileOperationsHelper);
+                                fileSystemHelper,
+                                pathService);
 
     var synchronizer = new Synchronizer(logger, synchronizationProcessor, argumentsFromCLI.SynchronizationInterval);
 

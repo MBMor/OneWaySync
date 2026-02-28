@@ -16,10 +16,15 @@ namespace OneWaySync.Synchronizer.Helpers
         public required Dictionary<string, FileMetadata> FilesRelativePathsAndMetadata { get; init; }
     }
 
-    public class DirectoryScaner(ILogger logger, IFileOperationsHelper fileOperationsHelper) : IDirectoryScaner
+    public class DirectoryScaner(
+        ILogger logger, 
+        IFileSystem fileOperationsHelper,
+        IPathService pathService
+        ) : IDirectoryScaner
     {
         private readonly ILogger _logger = logger;
-        private readonly IFileOperationsHelper _fileOperationsHelper = fileOperationsHelper;
+        private readonly IFileSystem _fileOperationsHelper = fileOperationsHelper;
+        private readonly IPathService _pathService = pathService; 
 
         public DirectoryContent ScanDirectory(string rootDirectory, EnumerationOptions enumOptions) {
 
@@ -30,7 +35,7 @@ namespace OneWaySync.Synchronizer.Helpers
             {
                 try
                 {
-                    var relativePath = _fileOperationsHelper.GetRelativePath(rootDirectory, item);
+                    var relativePath = _pathService.GetRelativePath(rootDirectory, item);
 
                     var fileAttributes = _fileOperationsHelper.GetAttributes(item);
                     var isDirectory = (fileAttributes & FileAttributes.Directory) != 0;

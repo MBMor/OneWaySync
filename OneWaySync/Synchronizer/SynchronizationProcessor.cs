@@ -13,7 +13,8 @@ namespace OneWaySync.Synchronizer
         private readonly ILogger _logger;
         private readonly IDirectoryScaner _directoryMetadataHelper;
         private readonly IMd5Helper _md5Helper;
-        private readonly IFileOperationsHelper _fileOperationsHelper;
+        private readonly IFileSystem _fileOperationsHelper;
+        private readonly IPathService _pathService;
 
         private readonly string _source;
         private readonly string _destination;
@@ -26,7 +27,8 @@ namespace OneWaySync.Synchronizer
             string destinationDirectory,
             IDirectoryScaner directoryHelper, 
             IMd5Helper md5Helper,
-            IFileOperationsHelper fileOperationsHelper,
+            IFileSystem fileOperationsHelper,
+            IPathService pathService,
             EnumerationOptions? enumOptionsOptionalOrDefault = null
             )
         {
@@ -36,6 +38,7 @@ namespace OneWaySync.Synchronizer
             _directoryMetadataHelper = directoryHelper;
             _md5Helper = md5Helper;
             _fileOperationsHelper = fileOperationsHelper;
+            _pathService = pathService;
             _enumOptions = enumOptionsOptionalOrDefault ?? new EnumerationOptions
             {
                 RecurseSubdirectories = true,
@@ -67,7 +70,7 @@ namespace OneWaySync.Synchronizer
             {
                 try
                 {
-                    var dstDirectoryFullPath = _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
+                    var dstDirectoryFullPath = _pathService.Combine(destinationStructure.RootDirectory, relativePath);
 
                     if (!_fileOperationsHelper.DirectoryExists(dstDirectoryFullPath))
                     {
@@ -92,7 +95,7 @@ namespace OneWaySync.Synchronizer
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed processing file: {File}", srcFileMetadata.FullPath);
+                    _logger.LogError("Failed processing file: {File} | Exception: {Message}", srcFileMetadata.FullPath, ex.Message);
                 }
             }
         }
@@ -102,7 +105,7 @@ namespace OneWaySync.Synchronizer
             DirectoryContent destinationStructure)
         {
             var dstFileFullPath =
-                _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
+                _pathService.Combine(destinationStructure.RootDirectory, relativePath);
             //if file is missing copy it to destination and skip to another foreach item, if not query dstFileMetadata
             if (!destinationStructure.FilesRelativePathsAndMetadata
                     .TryGetValue(relativePath, out var dstFileMetadata))
@@ -176,8 +179,8 @@ namespace OneWaySync.Synchronizer
                 if (sourceStructure.SubDirsRelativePaths.Contains(relativePath))
                     continue;
 
-                var destinationDirectryFullPath = 
-                    _fileOperationsHelper.Combine(destinationStructure.RootDirectory, relativePath);
+                var destinationDirectryFullPath =
+                    _pathService.Combine(destinationStructure.RootDirectory, relativePath);
 
                 try
                 {
