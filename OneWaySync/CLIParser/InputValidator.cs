@@ -4,133 +4,160 @@ using OneWaySync.GlobalHelpers;
 
 namespace OneWaySync.CLIParser
 {
-    public class InputValidator(ILogger logger, IFileSystem fileOperationsHelper, IPathService pathService)
+    public class InputValidator(
+        ILogger logger,
+        IFileSystem fileOperationsHelper,
+        IPathService pathService,
+        ICLIParser cliParser)
     {
         private readonly ILogger _logger = logger;
         private readonly IFileSystem _fileOperationsHelper = fileOperationsHelper;
         private readonly IPathService _pathService = pathService;
+        private readonly ICLIParser _cliParser = cliParser;
 
         public UserInput GetCLIData(string[] args)
         {
-            var parsed = Parser.Default.ParseArguments<Options>(args);
-
-            return new UserInput
-            {
-
-                SourceDirectory = _pathService.NormalizePath(parsed.Value.SourceDirectoryPath),
-                DestinationDirectory = _pathService.NormalizePath(parsed.Value.DestinationDirectoryPath),
-                SynchronizationInterval = parsed.Value.SynchronizationInterval == 0
-                                            ? 1 : Math.Abs(parsed.Value.SynchronizationInterval), // min value 1
-                LogFilePath = _pathService.NormalizePath(parsed.Value.LogFilePath)
-            };
+            return _cliParser.Parse(args);
         }
-                
+
         public void Validate(UserInput userInput)
         {
-            var source = userInput.SourceDirectory;
-            var destination = userInput.DestinationDirectory;
+            var source = NormalizeRequiredPath(
+                userInput.SourceDirectory,
+                nameof(userInput.SourceDirectory));
 
-            if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(destination))
-                throw new ArgumentException("Whitespace/null used instead of valid directory path"); 
+            var destination = NormalizeRequiredPath(
+                userInput.DestinationDirectory,
+                nameof(userInput.DestinationDirectory));
 
-            if (_pathService.DirectoriesAreNested(source, destination))
-                throw new ArgumentException("Nested Source and Destination directory");
+            DirectoriesNotNestedCheck(source, destination);
 
-            //source must exist and allow reading
-            if (DirectoryMissing(source) || DirectoryReadingNotPossible(source))
-                throw new ArgumentException
-                    ($"Source directory doesn't exist or inaccessible- {source}");
+            DirectoryExistsAndIsReadable(
+                path: source,
+                roleName: "Source",
+                canBeCreatedIfMissing: false);
 
-            //destination directory can be created if missing
-            if (DirectoryMissing(destination))
-            {
-                _logger.LogWarning("Destination directory doesn't exist, trying to create one");
-                _fileOperationsHelper.CreateDirectory(destination);
-            }
+            DirectoryExistsAndIsReadable(
+                path: destination,
+                roleName: "Destination",
+                canBeCreatedIfMissing: true);
 
-            //destination must exist and allow reading
-            if (DirectoryMissing(destination) || DirectoryReadingNotPossible(destination))
-                throw new ArgumentException
-                    ($"Destination directory doesn't exist or inaccessible- {destination}");
-
-            //destination write is permited
-            if (DirectoryWriteIsNotPermitted(destination))
-                throw new UnauthorizedAccessException
-                    ($"No permission for writing in destination directory {destination}");
+            DirectoryAccesibleForWritingCheck(destination);
         }
 
-        private bool DirectoryMissing(string path)
+        private string NormalizeRequiredPath(string? path, string paramName)
         {
-            if (_fileOperationsHelper.DirectoryExists(path))
+            if (string.IsNullOrWhiteSpace(path))
             {
-                _logger.LogInformation("Directory {path} exist", path);
-                return false;
+                _logger.LogError(
+                    "Whitespace/null used instead of valid directory path - {dirType} - {value}",
+                    paramName, path);
+
+                throw new ArgumentException(
+                    "Whitespace/null used instead of valid directory path",
+                    paramName);
             }
-            else
+
+            return _pathService.NormalizePath(path);
+        }
+
+        private void DirectoriesNotNestedCheck(string source, string destination)
+        {
+            if (_pathService.DirectoriesAreNested(source, destination))
             {
-                _logger.LogError("Directory {path} doesn't exist", path);
-                return true;
+                _logger.LogError("Nested Source and Destination directory");
+                throw new ArgumentException("Nested Source and Destination directory");
             }
         }
 
-        private bool DirectoryReadingNotPossible(string path)
+        private void DirectoryExistsAndIsReadable(string path, string roleName, bool canBeCreatedIfMissing)
+        {
+            DirectoryExistsCheck(path, roleName, canBeCreatedIfMissing);
+            DirectoryIsReadableCheck(path, roleName);
+        }
+
+        private void DirectoryExistsCheck(string path, string roleName, bool canBeCreatedIfMissing)
+        {
+            // this is for destination directory check, one try to create it.
+            if (!_fileOperationsHelper.DirectoryExists(path))
+            {
+                if (!canBeCreatedIfMissing)
+                {
+                    _logger.LogError("{role} directory {path} doesn't exist", roleName, path);
+                    throw new ArgumentException($"{roleName} directory doesn't exist - {path}");
+                }
+
+                _logger.LogWarning("{role} directory {path} doesn't exist, trying to create one", roleName, path);
+                _fileOperationsHelper.CreateDirectory(path);
+
+                // verity that directory was created
+                if (!_fileOperationsHelper.DirectoryExists(path))
+                {
+                    _logger.LogError("Failed to create {role} directory {path}", roleName, path);
+                    throw new ArgumentException($"{roleName} directory doesn't exist or cannot be created - {path}");
+                }
+            }
+        }
+
+        private void DirectoryIsReadableCheck(string path, string roleName)
         {
             try
             {
-                var resultOfAccessAttempt = _fileOperationsHelper.EnumerateFileSystemEntries(path).FirstOrDefault();
-                _logger.LogInformation("Directory {path} accessible for reading", path);
-                return false;
+                _fileOperationsHelper.EnumerateFileSystemEntries(path).FirstOrDefault();
             }
             catch (UnauthorizedAccessException)
             {
-                _logger.LogError("Permission for reading missing - directory: {path}", path);
-                return true;
+                _logger.LogError("Permission for reading missing - {role} directory: {path}", roleName, path);
+                throw new UnauthorizedAccessException($"{roleName} directory is not readable - {path}");
             }
             catch (Exception ex)
             {
-                _logger.LogError("Inaccessible directory: {path}. Exception: {Message}", path, ex.Message);
-                return true;
+                _logger.LogError(
+                    "Inaccessible {role} directory: {path}. Exception: {Message}",
+                    roleName, path, ex.Message);
+
+                throw new ArgumentException($"{roleName} directory is inaccessible - {path}", ex);
             }
         }
 
-        private bool DirectoryWriteIsNotPermitted(string path)
+        private void DirectoryAccesibleForWritingCheck(string path)
         {
             try
             {
-                const int maxAttemptsForRandomNameGenerator = 10;
-                string testWriteDeletePermissionFile = "";
+                var probeFile = GenerateFileWithRandomName(path);
 
-                for (int i = 0; i < maxAttemptsForRandomNameGenerator; i++)
+                using (var _ = _fileOperationsHelper.CreateNewFile(probeFile))
                 {
-                    string generatedRandomFileName = _pathService.Combine(path, _pathService.GetRandomFileName());
-                    if (!_fileOperationsHelper.FileExists(generatedRandomFileName))
-                    {
-                        testWriteDeletePermissionFile = generatedRandomFileName;
-                        break;
-                    }
+                    // dummy create
                 }
 
-                using (var _ = _fileOperationsHelper.CreateNewFile(testWriteDeletePermissionFile))
-                {
-                    //dummy file creation to verify access rights
-                }
-
-                _fileOperationsHelper.DeleteFile(testWriteDeletePermissionFile);
+                _fileOperationsHelper.DeleteFile(probeFile);
                 _logger.LogInformation("Directory {path} Write/Delete permission OK", path);
-                return false;
             }
             catch (UnauthorizedAccessException)
             {
                 _logger.LogError("You aren't authorized to write in directory: {path}", path);
-                return true;
+                throw new UnauthorizedAccessException($"No permission for writing in destination directory {path}");
             }
             catch (Exception ex)
             {
                 _logger.LogError("Can't write in directory: {path}. Exception: {Message}", path, ex.Message);
-                return true;
+                throw new IOException($"Can't write in destination directory {path}", ex);
             }
         }
 
+        private string GenerateFileWithRandomName(string directory)
+        {
+            const int maxAttempts = 10;
 
+            for (int i = 0; i < maxAttempts; i++)
+            {
+                var generatedRandomFileName = _pathService.Combine(directory, _pathService.GetRandomFileName());
+                if (!_fileOperationsHelper.FileExists(generatedRandomFileName))
+                    return generatedRandomFileName;
+            }
+
+            throw new IOException($"Unable to generate probe file name in {directory}");
+        }
     }
 }

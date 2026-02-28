@@ -4,12 +4,14 @@ using OneWaySync.GlobalHelpers;
 using OneWaySync.Logger;
 using OneWaySync.Synchronizer;
 using OneWaySync.Synchronizer.Helpers;
+using System;
 
 //cli - OneWaySync.exe "C:\_test\A" "C:\_test\B" 30 "C:\_test.log.txt"
 try
 {
     var fileSystemHelper = new FileSystem();
     var pathService = new PathService();
+    var cliParser = new CLIParser();
 
     var logPath = args[3];
 
@@ -19,7 +21,7 @@ try
     var md5Helper = new Md5Helper();
     var directoryHelper = new DirectoryScaner(logger, fileSystemHelper, pathService);
 
-    var inputValidator = new InputValidator(logger, fileSystemHelper, pathService);
+    var inputValidator = new InputValidator(logger, fileSystemHelper, pathService, cliParser);
     var argumentsFromCLI = inputValidator.GetCLIData(args);
     inputValidator.Validate(argumentsFromCLI);
 

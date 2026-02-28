@@ -2,7 +2,7 @@
 
 namespace OneWaySync.CLIParser
 {
-    public class Options
+    public class CLIOptions
     {
         [Value(0, Required = true, MetaName = "source", HelpText = "Source directory. For example: \"c:\\test\\source\"")]
         public required string SourceDirectoryPath { get; init; }
