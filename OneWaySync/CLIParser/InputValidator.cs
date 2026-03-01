@@ -136,7 +136,7 @@ namespace OneWaySync.CLIParser
             }
             catch (UnauthorizedAccessException)
             {
-                _logger.LogError("You aren't authorized to write in directory: {path}", path);
+                _logger.LogError("No permission for writing in destination directory: {path}", path);
                 throw new UnauthorizedAccessException($"No permission for writing in destination directory {path}");
             }
             catch (Exception ex)
