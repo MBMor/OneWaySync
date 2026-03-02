@@ -3,7 +3,7 @@ using Moq;
 using OneWaySync.CLIParser;
 using OneWaySync.GlobalHelpers;
 
-namespace OneWaySync.Tests;
+namespace OneWaySyncTests;
 
 [TestFixture]
 public class ValidateTests
@@ -17,8 +17,8 @@ public class ValidateTests
         Assert.DoesNotThrow(() => inputValidatorBuilder.Sut.Validate(inputValidatorBuilder.ValidInput()));
 
         // write-check 
-        inputValidatorBuilder._fileSystem.Verify(x => x.CreateNewFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
-        inputValidatorBuilder._fileSystem.Verify(x => x.DeleteFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
+        inputValidatorBuilder.FileSystem.Verify(x => x.CreateNewFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
+        inputValidatorBuilder.FileSystem.Verify(x => x.DeleteFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
     }
 
     [TestCase(null)]
@@ -73,9 +73,9 @@ public class ValidateTests
 
         Assert.DoesNotThrow(() => builder.Sut.Validate(builder.ValidInput()));
 
-        builder._fileSystem.Verify(x => x.CreateDirectory(InputValidatorBuilder.DST), Times.Once);
-        builder._fileSystem.Verify(x => x.CreateNewFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
-        builder._fileSystem.Verify(x => x.DeleteFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
+        builder.FileSystem.Verify(x => x.CreateDirectory(InputValidatorBuilder.DST), Times.Once);
+        builder.FileSystem.Verify(x => x.CreateNewFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
+        builder.FileSystem.Verify(x => x.DeleteFile(InputValidatorBuilder.PROBE_PATH), Times.Once);
     }
 
     [Test]
@@ -88,7 +88,7 @@ public class ValidateTests
         var ex = Assert.Throws<ArgumentException>(() => builder.Sut.Validate(builder.ValidInput()));
         Assert.That(ex!.Message, Does.Contain("cannot be created"));
 
-        builder._fileSystem.Verify(x => x.CreateDirectory(InputValidatorBuilder.DST), Times.Once);
+        builder.FileSystem.Verify(x => x.CreateDirectory(InputValidatorBuilder.DST), Times.Once);
     }
 
     [Test]
@@ -138,7 +138,7 @@ public class ValidateTests
         var ex = Assert.Throws<UnauthorizedAccessException>(() => builder.Sut.Validate(builder.ValidInput()));
         Assert.That(ex!.Message, Does.Contain("No permission for writing in destination directory"));
 
-        builder._fileSystem.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Never);
+        builder.FileSystem.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Never);
     }
 
     [Test]
@@ -153,16 +153,16 @@ public class ValidateTests
         Assert.That(ex!.Message, Does.Contain("Can't write in destination directory"));
         Assert.That(ex.InnerException, Is.SameAs(inner));
 
-        builder._fileSystem.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Never);
+        builder.FileSystem.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Never);
     }
 }
 
 
 internal sealed class InputValidatorBuilder
 {
-    public Mock<IFileSystem> _fileSystem { get; }
-    public Mock<IPathService> _pathService { get; }
-    public Mock<ICLIParser> _cliParser { get; }
+    public Mock<IFileSystem> FileSystem { get; }
+    public Mock<IPathService> PathService { get; }
+    public Mock<ICLIParser> CliParser { get; }
     public InputValidator Sut { get; }
 
     public const string SRC = "SRC";
@@ -172,11 +172,11 @@ internal sealed class InputValidatorBuilder
 
     public InputValidatorBuilder(MockBehavior behavior = MockBehavior.Strict)
     {
-        _fileSystem = new Mock<IFileSystem>(behavior);
-        _pathService = new Mock<IPathService>(behavior);
-        _cliParser = new Mock<ICLIParser>(behavior);
+        FileSystem = new Mock<IFileSystem>(behavior);
+        PathService = new Mock<IPathService>(behavior);
+        CliParser = new Mock<ICLIParser>(behavior);
 
-        Sut = new InputValidator(NullLogger.Instance, _fileSystem.Object, _pathService.Object, _cliParser.Object);
+        Sut = new InputValidator(NullLogger.Instance, FileSystem.Object, PathService.Object, CliParser.Object);
     }
 
     public UserInput ValidInput(string? src = SRC, string? dst = DST)
@@ -185,74 +185,74 @@ internal sealed class InputValidatorBuilder
     public InputValidatorBuilder HappyPath()
     {
         // path normalization + nesting
-        _pathService.Setup(x => x.NormalizePath(SRC)).Returns(SRC);
-        _pathService.Setup(x => x.NormalizePath(DST)).Returns(DST);
-        _pathService.Setup(x => x.DirectoriesAreNested(SRC, DST)).Returns(false);
+        PathService.Setup(x => x.NormalizePath(SRC)).Returns(SRC);
+        PathService.Setup(x => x.NormalizePath(DST)).Returns(DST);
+        PathService.Setup(x => x.DirectoriesAreNested(SRC, DST)).Returns(false);
 
         // existence
-        _fileSystem.Setup(x => x.DirectoryExists(SRC)).Returns(true);
-        _fileSystem.Setup(x => x.DirectoryExists(DST)).Returns(true);
+        FileSystem.Setup(x => x.DirectoryExists(SRC)).Returns(true);
+        FileSystem.Setup(x => x.DirectoryExists(DST)).Returns(true);
 
         // readable checks
-        _fileSystem.Setup(x => x.EnumerateFileSystemEntries(SRC)).Returns(Array.Empty<string>());
-        _fileSystem.Setup(x => x.EnumerateFileSystemEntries(DST)).Returns(Array.Empty<string>());
+        FileSystem.Setup(x => x.EnumerateFileSystemEntries(SRC)).Returns(Array.Empty<string>());
+        FileSystem.Setup(x => x.EnumerateFileSystemEntries(DST)).Returns(Array.Empty<string>());
 
         // probe file write/delete
-        _pathService.Setup(x => x.GetRandomFileName()).Returns(PROBE_NAME);
-        _pathService.Setup(x => x.Combine(DST, PROBE_NAME)).Returns(PROBE_PATH);
+        PathService.Setup(x => x.GetRandomFileName()).Returns(PROBE_NAME);
+        PathService.Setup(x => x.Combine(DST, PROBE_NAME)).Returns(PROBE_PATH);
 
-        _fileSystem.Setup(x => x.FileExists(PROBE_PATH)).Returns(false);
-        _fileSystem.Setup(x => x.CreateNewFile(PROBE_PATH)).Returns(new MemoryStream());
-        _fileSystem.Setup(x => x.DeleteFile(PROBE_PATH));
+        FileSystem.Setup(x => x.FileExists(PROBE_PATH)).Returns(false);
+        FileSystem.Setup(x => x.CreateNewFile(PROBE_PATH)).Returns(new MemoryStream());
+        FileSystem.Setup(x => x.DeleteFile(PROBE_PATH));
 
         return this;
     }
 
     public InputValidatorBuilder WithNested()
     {
-        _pathService.Setup(x => x.NormalizePath(SRC)).Returns(SRC);
-        _pathService.Setup(x => x.NormalizePath(DST)).Returns(DST);
-        _pathService.Setup(x => x.DirectoriesAreNested(SRC, DST)).Returns(true);
+        PathService.Setup(x => x.NormalizePath(SRC)).Returns(SRC);
+        PathService.Setup(x => x.NormalizePath(DST)).Returns(DST);
+        PathService.Setup(x => x.DirectoriesAreNested(SRC, DST)).Returns(true);
         return this;
     }
 
     public InputValidatorBuilder WithSourceExists(bool exists)
     {
-        _fileSystem.Setup(x => x.DirectoryExists(SRC)).Returns(exists);
+        FileSystem.Setup(x => x.DirectoryExists(SRC)).Returns(exists);
         return this;
     }
 
     public InputValidatorBuilder WithDestinationCreatedThenExists()
     {
-        _fileSystem.SetupSequence(x => x.DirectoryExists(DST))
+        FileSystem.SetupSequence(x => x.DirectoryExists(DST))
           .Returns(false)
           .Returns(true);
 
-        _fileSystem.Setup(x => x.CreateDirectory(DST));
+        FileSystem.Setup(x => x.CreateDirectory(DST));
         return this;
     }
 
     public InputValidatorBuilder WithDestinationNeverExistsEvenAfterCreate()
     {
-        _fileSystem.Setup(x => x.DirectoryExists(DST)).Returns(false);
-        _fileSystem.Setup(x => x.CreateDirectory(DST));
+        FileSystem.Setup(x => x.DirectoryExists(DST)).Returns(false);
+        FileSystem.Setup(x => x.CreateDirectory(DST));
         return this;
     }
 
     public InputValidatorBuilder WithReadableThrows(string path, Exception ex)
     {
-        _fileSystem.Setup(x => x.EnumerateFileSystemEntries(path)).Throws(ex);
+        FileSystem.Setup(x => x.EnumerateFileSystemEntries(path)).Throws(ex);
         return this;
     }
 
     public InputValidatorBuilder WithDestinationWriteThrows(Exception ex)
     {
         // we ensure that the "write" branch reaches CreateNewFile and crashes there
-        _pathService.Setup(x => x.GetRandomFileName()).Returns(PROBE_NAME);
-        _pathService.Setup(x => x.Combine(DST, PROBE_NAME)).Returns(PROBE_PATH);
+        PathService.Setup(x => x.GetRandomFileName()).Returns(PROBE_NAME);
+        PathService.Setup(x => x.Combine(DST, PROBE_NAME)).Returns(PROBE_PATH);
 
-        _fileSystem.Setup(x => x.FileExists(PROBE_PATH)).Returns(false);
-        _fileSystem.Setup(x => x.CreateNewFile(PROBE_PATH)).Throws(ex);
+        FileSystem.Setup(x => x.FileExists(PROBE_PATH)).Returns(false);
+        FileSystem.Setup(x => x.CreateNewFile(PROBE_PATH)).Throws(ex);
         return this;
     }
 }

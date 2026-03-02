@@ -20,14 +20,22 @@ namespace OneWaySync.GlobalHelpers
                 {
                     SourceDirectory = cliOptions.SourceDirectoryPath,
                     DestinationDirectory = cliOptions.DestinationDirectoryPath,
-                    SynchronizationInterval = GuardMinimalSyncInterval(cliOptions.SynchronizationInterval),
+                    SynchronizationInterval = GuardSyncInterval(cliOptions.SynchronizationInterval),
                     LogFilePath = cliOptions.LogFilePath
                 },
                 erros => throw new ArgumentException("Invalid CLI arguments")
             );
         }
 
-        private static int GuardMinimalSyncInterval(int interval)
-            => interval == 0 ? MinimalSyncInterval : Math.Abs(interval);
+        private static int GuardSyncInterval(int interval)
+        {
+            if (interval == 0)
+                return MinimalSyncInterval; 
+
+            if (interval == int.MinValue) //Int overflow guard
+                return int.MaxValue;
+
+            return Math.Abs(interval);
+        }
     }
 }
