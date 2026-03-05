@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using OneWaySync.GlobalHelpers;
+using System.Security.Cryptography;
 
 namespace OneWaySync.Synchronizer.Helpers
 {
@@ -10,6 +11,12 @@ namespace OneWaySync.Synchronizer.Helpers
     }
     public class Md5Helper : IMd5Helper
     {
+        private readonly IFileSystem _fileSystem;
+
+        public Md5Helper(IFileSystem fileSystem)
+        {
+            _fileSystem = fileSystem;
+        }
         public string ComputeMd5Hex(string filePath)
         {
             using var md5 = MD5.Create();
@@ -17,9 +24,9 @@ namespace OneWaySync.Synchronizer.Helpers
                 filePath,
                 FileMode.Open,
                 FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 1024 * 1024, 
-                options: FileOptions.SequentialScan);
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 1024 * 1024,
+                options: FileOptions.SequentialScan); 
 
             var hash = md5.ComputeHash(stream);
             return Convert.ToHexString(hash); 
@@ -34,8 +41,23 @@ namespace OneWaySync.Synchronizer.Helpers
 
         public void ValidateCopyOrThrowException(string sourceFile, string destinationFile, string relativePath)
         {
-            if (!Md5Equals(sourceFile, destinationFile))
-                throw new IOException($"MD5 mismatch after copy: {relativePath}");
+            try
+            {
+                if (!Md5Equals(sourceFile, destinationFile))
+                    throw new IOException($"MD5 mismatch after copy: {relativePath}");
+            }
+            catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33)
+            {
+                // destination locked?
+                if (_fileSystem.FileExists(destinationFile) &&
+                    _fileSystem.IsFileLocked(destinationFile))
+                {
+                    throw new DestinationLockedException(destinationFile, ex);
+                }
+
+                // else source is considered locked
+                throw new SourceLockedException(sourceFile, ex);
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using OneWaySync.GlobalHelpers;
 using OneWaySync.Synchronizer.Helpers;
+using System.Diagnostics;
 
 namespace OneWaySync.Synchronizer
 {
@@ -93,6 +94,16 @@ namespace OneWaySync.Synchronizer
                 {
                     ProcessCurrentFile(relativePath, srcFileMetadata, destinationStructure);
                 }
+                catch (SourceLockedException ex)
+                {
+                    _logger.LogWarning("Source locked, skipping for now: {File} | {Message}", relativePath, ex.Message);
+
+                }
+                catch (DestinationLockedException ex)
+                {
+                    _logger.LogError("Destination locked, cannot update: {File} | {Message}", relativePath, ex.Message);
+            
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError("Failed processing file: {File} | Exception: {Message}", srcFileMetadata.FullPath, ex.Message);
@@ -110,22 +121,25 @@ namespace OneWaySync.Synchronizer
             if (!destinationStructure.FilesRelativePathsAndMetadata
                     .TryGetValue(relativePath, out var dstFileMetadata))
             {
-                CopyFileSetMetadataAndCheckMd5(
-                    srcFileMetadata.FullPath,
-                    relativePath,
-                    dstFileFullPath,
-                    srcFileMetadata.LastWriteTimeUtc);
 
-                return;
+                CopyFileSetMetadataAndCheckMd5(
+                srcFileMetadata.FullPath,
+                relativePath,
+                dstFileFullPath,
+                srcFileMetadata.LastWriteTimeUtc);
+
+            return;
             }
 
             if (ShouldCopyFile(relativePath, srcFileMetadata, dstFileMetadata))
             {
+
                 CopyFileSetMetadataAndCheckMd5(
-                    srcFileMetadata.FullPath,
-                    relativePath,
-                    dstFileFullPath,
-                    srcFileMetadata.LastWriteTimeUtc);
+                srcFileMetadata.FullPath,
+                relativePath,
+                dstFileFullPath,
+                srcFileMetadata.LastWriteTimeUtc);
+
             }
         }
         private bool ShouldCopyFile(
@@ -163,6 +177,10 @@ namespace OneWaySync.Synchronizer
                     _fileOperationsHelper.DeleteFile(dstFileMetadata.FullPath);
                     _logger.LogInformation("Deleted extra file: {File}", relativePath);
                     
+                }
+                catch (DestinationLockedException ex)
+                {
+                    _logger.LogError("Destination locked, cannot delete extra file: {File} | {Message}", relativePath, ex.Message);
                 }
                 catch (Exception ex)
                 {
@@ -204,18 +222,30 @@ namespace OneWaySync.Synchronizer
             string replicaFilePath,
             DateTime lastWriteTimeUtc)
         {
-            CopyFile(sourceFile, replicaFilePath);
-            SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
 
-            ValidateCopyOrThrowException(sourceFile, replicaFilePath, relativePath);
+            try
+            {
+                CopyFile(sourceFile, replicaFilePath);
 
-            _logger.LogInformation("Copied file (MD5 OK): {File}", relativePath);
+                SetLastWriteTimeUtc(replicaFilePath, lastWriteTimeUtc);
+
+                ValidateCopyOrThrowException(sourceFile, replicaFilePath, relativePath);
+
+                _logger.LogInformation("Copied file (MD5 OK): {File}", relativePath);
+            }
+            catch (SourceLockedException)
+            {
+                // warning in CopyOrUpdateFiles, here only rethrow
+                throw;
+            }
         }
 
         private void CopyFile(string sourceFile, string replicaFilePath)
         {
+
             _fileOperationsHelper.CopyFile(sourceFile, replicaFilePath, overwrite: true);
         }
+
 
         private void SetLastWriteTimeUtc(string replicaFilePath, DateTime lastWriteTimeUtc)
         {

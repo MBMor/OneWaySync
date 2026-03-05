@@ -14,6 +14,7 @@ namespace OneWaySync.GlobalHelpers
         void CopyFile(string src, string dst, bool overwrite);
         void DeleteFile(string path);
         Stream CreateNewFile(string path);
+        bool IsFileLocked(string path);
         void SetLastWriteTimeUtc(string path, DateTime utc);
         FileAttributes GetAttributes(string path);
         void SetAttributes(string path, FileAttributes attributes);
@@ -39,22 +40,84 @@ namespace OneWaySync.GlobalHelpers
             => File.Exists(path);
 
         public void CopyFile(string src, string dst, bool overwrite)
-            => File.Copy(src, dst, overwrite);
+        {
+            try
+            {
+                File.Copy(src, dst, overwrite);
+            }
+            catch (IOException ex) when (IsSharingOrLockViolation(ex))
+            {
+                // Destination lock? (when overwriting existting dst, or is hold by someone)
+                if (File.Exists(dst) && IsFileLocked(dst))
+                    throw new DestinationLockedException(dst, ex);
+
+                // else we take the source as locked
+                throw new SourceLockedException(src, ex);
+            }
+        }
 
         public void DeleteFile(string path)
-            => File.Delete(path);
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException ex) when (IsSharingOrLockViolation(ex))
+            {
+                throw new DestinationLockedException(path, ex);
+            }
+        }
 
         public Stream CreateNewFile(string path)
-            => new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        {
+            try
+            {
+                return new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            }
+            catch (IOException ex) when (IsSharingOrLockViolation(ex))
+            {
+                throw new DestinationLockedException(path, ex);
+            }
+        }
+        public bool IsFileLocked(string path)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                return false;
+            }
+            catch (IOException)
+            {
+                return true;
+            }
+        }
 
         public void SetLastWriteTimeUtc(string path, DateTime utc)
-            => File.SetLastWriteTimeUtc(path, utc);
+        {
+            try
+            {
+                File.SetLastWriteTimeUtc(path, utc);
+            }
+            catch (IOException ex) when (IsSharingOrLockViolation(ex))
+            {
+                throw new DestinationLockedException(path, ex);
+            }
+        }
 
         public FileAttributes GetAttributes(string path)
             => File.GetAttributes(path);
 
         public void SetAttributes(string path, FileAttributes attributes)
-            => File.SetAttributes(path, attributes);
+        {
+            try
+            {
+                File.SetAttributes(path, attributes);
+            }
+            catch (IOException ex) when (IsSharingOrLockViolation(ex))
+            {
+                throw new DestinationLockedException(path, ex);
+            }
+        }
 
         public IEnumerable<string> EnumerateFileSystemEntries(string path)
             => Directory.EnumerateFileSystemEntries(path);
@@ -82,6 +145,11 @@ namespace OneWaySync.GlobalHelpers
         {
             var fileMetadata = new FileInfo(path);
             return (fileMetadata.Length, fileMetadata.LastWriteTimeUtc);
+        }
+        private static bool IsSharingOrLockViolation(IOException ex)
+        {
+            int win32 = ex.HResult & 0xFFFF;
+            return win32 is 32 or 33; // sharing/lock violation
         }
     }
 }

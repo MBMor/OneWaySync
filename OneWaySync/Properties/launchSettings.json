@@ -2,7 +2,7 @@
   "profiles": {
     "OneWaySync": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\_test\\A\" \"C:\\_test\\B\" 5 \"C:\\_test\\log.txt\" 6"
+      "commandLineArgs": "\"C:\\_test\\A\" \"C:\\_test\\B\" 10 \"C:\\_test\\log.txt\" 6"
     }
   }
 }

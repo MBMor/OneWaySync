@@ -18,7 +18,7 @@ try
     fileSystemHelper.FilePathAllowsCreateOrUseFile(logPath);
     var logger = LoggerSetup.CreateLoggerFactory(logPath).CreateLogger<Program>();
 
-    var md5Helper = new Md5Helper();
+    var md5Helper = new Md5Helper(fileSystemHelper);
     var directoryHelper = new DirectoryScaner(logger, fileSystemHelper, pathService);
 
     var inputValidator = new InputValidator(logger, fileSystemHelper, pathService, cliParser);
