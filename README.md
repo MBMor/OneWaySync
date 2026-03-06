@@ -1,4 +1,7 @@
 ```
+Project ended. Early commits can be used as source for refactoring exercises.
+Reboot in OneWaySyncV2 repo.
+
 C# project for one-way synchronization from source directory to destination directory, running in predefined cycles.
 
 Usage:
